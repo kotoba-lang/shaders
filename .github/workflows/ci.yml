@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - run: git clone --depth 1 https://github.com/kotoba-lang/wgsl.git ../wgsl
+      - run: git clone --depth 1 https://github.com/kotoba-lang/expr.git ../expr
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
