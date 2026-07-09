@@ -10,7 +10,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: git clone --depth 1 https://github.com/kotoba-lang/wgsl.git ../wgsl
+      # depends on kami.wgsl (kotoba-lang/webgpu) directly — see deps.edn / kotoba-lang/wgsl's
+      # CHANGELOG.md for the 2026-07-09 dedup rationale.
+      - run: git clone --depth 1 https://github.com/kotoba-lang/webgpu.git ../webgpu
+      - run: git clone --depth 1 https://github.com/kotoba-lang/org-w3-webgpu.git ../org-w3-webgpu
       - run: git clone --depth 1 https://github.com/kotoba-lang/expr.git ../expr
       - uses: actions/setup-java@v4
         with:

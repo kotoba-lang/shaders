@@ -1,5 +1,5 @@
 (ns shader-test
-  "Safety gate for adopting kotoba.wgsl in the live renderer. The shader runs via WebGPU, which can't
+  "Safety gate for adopting kami.wgsl in the live renderer. The shader runs via WebGPU, which can't
    be screenshot headlessly, so we instead prove the GENERATED fragment is token-equivalent to the
    hand-written WGSL that shipped: identical token stream once whitespace and (grouping/call)
    parentheses are stripped. If kotoba.shaders/lit-fs ever drifts from the lighting that was verified
@@ -38,12 +38,12 @@ fn fs(i: VO) -> @location(0) vec4<f32> {
 }")
 
 ;; token stream sans whitespace and parens (call + grouping). Equal canon ⇒ same operations/operands
-;; in the same order ⇒ functionally identical given kotoba.wgsl's tested operator precedence.
+;; in the same order ⇒ functionally identical given kami.wgsl's tested operator precedence.
 (defn- canon [s] (str/replace s #"[\s()]" ""))
 
 (deftest lit-fs-matches-the-shipped-shader
   (is (= (canon golden-fs) (canon (sh/lit-fs)))
-      "kotoba.wgsl-generated fragment is token-equivalent to the hand-written, on-screen-verified WGSL"))
+      "kami.wgsl-generated fragment is token-equivalent to the hand-written, on-screen-verified WGSL"))
 
 ;; the rest of the shipped shader: uniforms, shadow-map bindings, PCF shadow fn, varyings, vertex.
 (def golden-preamble
@@ -81,7 +81,7 @@ fn vs(@location(0) pos: vec3<f32>, @location(1) normal: vec3<f32>,
 
 (deftest lit-shader-matches-the-shipped-shader
   (is (= (canon (str golden-preamble "\n" golden-fs)) (canon (sh/lit-shader)))
-      "the whole kotoba.wgsl-generated shader (struct/bindings/shadow/vertex/fragment) is token-equivalent to the shipped WGSL"))
+      "the whole kami.wgsl-generated shader (struct/bindings/shadow/vertex/fragment) is token-equivalent to the shipped WGSL"))
 
 ;; the depth-only shadow pass (vertex from the sun's POV).
 (def golden-shadow
@@ -97,5 +97,5 @@ fn vs(@location(0) pos: vec3<f32>, @location(1) normal: vec3<f32>,
 
 (deftest shadow-shader-matches-the-shipped-shader
   (is (= (canon golden-shadow) (canon (sh/shadow-shader)))
-      "the kotoba.wgsl-generated depth pass is token-equivalent to the shipped SHADOW-WGSL"))
+      "the kami.wgsl-generated depth pass is token-equivalent to the shipped SHADOW-WGSL"))
 
