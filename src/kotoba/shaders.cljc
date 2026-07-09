@@ -1,11 +1,15 @@
 (ns kotoba.shaders
-  "Game shaders as data — the kotoba.wgsl EDN AST for the lit instanced renderer's fragment lighting.
+  "Game shaders as data — the kami.wgsl EDN AST for the lit instanced renderer's fragment lighting.
    The lighting model (hemisphere ambient, Lambert, Blinn-Phong spec, Fresnel rim, PCF shadow,
    Reinhard tonemap, gamma) is authored as data, so it reads and forks like the scene, and ONE
    source generates the WGSL that kotoba.webgpu runs. The struct/bindings/shadow/vertex
    preamble stays a template in kotoba.webgpu; this is the fragment a designer actually
-   tunes. `.cljc` → browser + bb/JVM."
-  (:require [kotoba.wgsl :as w]))
+   tunes. `.cljc` → browser + bb/JVM.
+
+   Depends directly on kotoba-lang/webgpu's kami.wgsl (2026-07-09 dedup — see kotoba-lang/wgsl's
+   CHANGELOG.md for the rationale: kami.wgsl is the canonical WGSL-as-data compiler, kotoba.wgsl is
+   now a thin re-export of it)."
+  (:require [kami.wgsl :as w]))
 
 ;; lighting inputs come from the G uniform (g.light_a..d pack the tunables) and the VO varying `i`.
 (def lit-fs-body
