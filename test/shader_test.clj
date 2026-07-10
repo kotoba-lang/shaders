@@ -2,11 +2,11 @@
   "Safety gate for adopting kami.wgsl in the live renderer. The shader runs via WebGPU, which can't
    be screenshot headlessly, so we instead prove the GENERATED fragment is token-equivalent to the
    hand-written WGSL that shipped: identical token stream once whitespace and (grouping/call)
-   parentheses are stripped. If kotoba.shaders/lit-fs ever drifts from the lighting that was verified
+   parentheses are stripped. If kami.shaders/lit-fs ever drifts from the lighting that was verified
    on-screen, this fails — so the EDN can drive the renderer without a visual re-check."
   (:require [clojure.test :refer [deftest is]]
             [clojure.string :as str]
-            [kotoba.shaders :as sh]))
+            [kami.shaders :as sh]))
 
 ;; the exact fragment that shipped in kotoba.webgpu (the on-screen-verified lighting).
 (def golden-fs
