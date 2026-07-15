@@ -121,11 +121,14 @@ fn vs(@location(0) pos: vec3<f32>, @location(1) normal: vec3<f32>,
     (is (str/includes? composite "bloomTex"))))
 
 (deftest textured-pbr-contract
-  (let [wgsl (sh/cascaded-textured-hdr-shader)]
+  (let [wgsl (sh/cascaded-textured-hdr-shader)
+        direct (sh/cascaded-textured-lit-shader)]
     (is (str/includes? wgsl "@binding(3) var albedoTex: texture_2d<f32>"))
     (is (str/includes? wgsl "@binding(4) var normalTex: texture_2d<f32>"))
     (is (str/includes? wgsl "@binding(5) var metallicRoughnessTex: texture_2d<f32>"))
     (is (str/includes? wgsl "@location(8) uv: vec2<f32>"))
     (is (str/includes? wgsl "cross(baseN, T)"))
     (is (str/includes? wgsl "mr.g"))
-    (is (str/includes? wgsl "mr.b"))))
+    (is (str/includes? wgsl "mr.b"))
+    (is (not (str/includes? wgsl "2.51")))
+    (is (str/includes? direct "2.51"))))
