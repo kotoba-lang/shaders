@@ -109,3 +109,13 @@ fn vs(@location(0) pos: vec3<f32>, @location(1) normal: vec3<f32>,
   (doseq [cascade (range 4)]
     (let [depth (sh/cascaded-shadow-shader cascade)]
       (is (str/includes? depth (str "g.light_vp" cascade))))))
+
+(deftest hdr-bloom-contract
+  (let [hdr (sh/cascaded-hdr-shader)
+        bloom (sh/bloom-shader)
+        composite (sh/hdr-composite-shader)]
+    (is (not (str/includes? hdr "2.51")) "scene shader keeps linear HDR values")
+    (is (str/includes? bloom "smoothstep(0.8, 1.3"))
+    (is (str/includes? bloom "sum / 16.0"))
+    (is (str/includes? composite "2.51"))
+    (is (str/includes? composite "bloomTex"))))

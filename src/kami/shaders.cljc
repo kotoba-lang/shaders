@@ -202,3 +202,80 @@
                         :ret :VO} vs-body)
      (apply w/func :fs {:stage :fragment :params [[:i :VO]]
                         :ret [:loc 0 [:vec4 :f32]]} fs-body))))
+
+(defn cascaded-hdr-shader
+  "Cascaded lit shader returning linear HDR. ACES/gamma are deferred to the
+   final composite pass so bloom operates on values above display white."
+  []
+  (let [linear-body (conj (vec (drop-last 3 lit-fs-body))
+                          [:return [:vec4 :c 1.0]])
+        fs-body (walk/postwalk-replace {:shadow :cascaded-shadow} linear-body)]
+    (w/shader
+     (w/struct* :G cascaded-G-fields)
+     (w/binding* {:group 0 :binding 0 :space :uniform} :g :G)
+     (w/binding* {:group 0 :binding 1} :shadowMap "texture_depth_2d_array")
+     (w/binding* {:group 0 :binding 2} :shadowSamp "sampler_comparison")
+     (apply w/func :cascaded-shadow
+            {:params [[:wpos [:vec3 :f32]] [:ndl :f32]] :ret :f32}
+            cascaded-shadow-fn-body)
+     (w/struct* :VO VO-fields)
+     (apply w/func :vs {:stage :vertex
+                        :params [[:pos [:vec3 :f32] {:location 0}]
+                                 [:normal [:vec3 :f32] {:location 1}]
+                                 [:m0 [:vec4 :f32] {:location 2}]
+                                 [:m1 [:vec4 :f32] {:location 3}]
+                                 [:m2 [:vec4 :f32] {:location 4}]
+                                 [:m3 [:vec4 :f32] {:location 5}]
+                                 [:color [:vec4 :f32] {:location 6}]
+                                 [:material [:vec4 :f32] {:location 7}]]
+                        :ret :VO} vs-body)
+     (apply w/func :fs {:stage :fragment :params [[:i :VO]]
+                        :ret [:loc 0 [:vec4 :f32]]} fs-body))))
+
+(def fullscreen-vertex-wgsl
+  "struct FullscreenOut { @builtin(position) position: vec4<f32>, @location(0) uv: vec2<f32> };
+@vertex fn vs(@builtin(vertex_index) i: u32) -> FullscreenOut {
+  var p = array<vec2<f32>, 3>(vec2<f32>(-1.0,-1.0), vec2<f32>(3.0,-1.0), vec2<f32>(-1.0,3.0));
+  var out: FullscreenOut;
+  out.position = vec4<f32>(p[i], 0.0, 1.0);
+  out.uv = p[i] * vec2<f32>(0.5,-0.5) + vec2<f32>(0.5,0.5);
+  return out;
+}")
+
+(defn bloom-shader
+  "Half-resolution bright-pass with a single 3x3 Gaussian filter."
+  []
+  (w/shader
+   fullscreen-vertex-wgsl
+   "@group(0) @binding(0) var hdrTex: texture_2d<f32>;
+@group(0) @binding(1) var linearSampler: sampler;
+@fragment fn fs(in: FullscreenOut) -> @location(0) vec4<f32> {
+  let dims = vec2<f32>(textureDimensions(hdrTex));
+  let texel = 1.0 / dims;
+  var sum = vec3<f32>(0.0);
+  for (var y = -1; y <= 1; y++) {
+    for (var x = -1; x <= 1; x++) {
+      let weight = select(select(1.0, 2.0, x == 0), select(2.0, 4.0, x == 0), y == 0);
+      let c = textureSample(hdrTex, linearSampler, in.uv + vec2<f32>(f32(x),f32(y))*texel).rgb;
+      let brightness = max(max(c.r,c.g),c.b);
+      sum += c * smoothstep(0.8, 1.3, brightness) * weight;
+    }
+  }
+  return vec4<f32>(sum / 16.0, 1.0);
+}") )
+
+(defn hdr-composite-shader
+  "Combine linear scene+bloom, apply ACES filmic mapping, then output gamma."
+  []
+  (w/shader
+   fullscreen-vertex-wgsl
+   "@group(0) @binding(0) var hdrTex: texture_2d<f32>;
+@group(0) @binding(1) var bloomTex: texture_2d<f32>;
+@group(0) @binding(2) var linearSampler: sampler;
+@fragment fn fs(in: FullscreenOut) -> @location(0) vec4<f32> {
+  var c = textureSample(hdrTex, linearSampler, in.uv).rgb;
+  c += textureSample(bloomTex, linearSampler, in.uv).rgb * 0.12;
+  c = clamp((c*(2.51*c+vec3<f32>(0.03))) / (c*(2.43*c+vec3<f32>(0.59))+vec3<f32>(0.14)), vec3<f32>(0.0), vec3<f32>(1.0));
+  c = pow(c, vec3<f32>(1.0/2.2));
+  return vec4<f32>(c,1.0);
+}") )
