@@ -5,7 +5,8 @@
    source generates the WGSL the web (kami.webgpu) runs — and, in time, the native kami-webgpu-rs
    path (parity by source). The struct/bindings/shadow/vertex preamble stays a template in
    kami.webgpu; this is the fragment a designer actually tunes. `.cljc` → browser + bb/JVM."
-  (:require [kami.wgsl :as w]))
+  (:require [clojure.walk :as walk]
+            [kami.wgsl :as w]))
 
 ;; lighting inputs come from the G uniform (g.light_a..d pack the tunables) and the VO varying `i`.
 (def lit-fs-body
@@ -119,3 +120,85 @@
                                [:color [:vec4 :f32] {:location 6}] [:material [:vec4 :f32] {:location 7}]]
                       :ret :VO} vs-body)
    (lit-fs)))
+
+;; ── four-cascade directional shadows -----------------------------------------
+
+(def cascaded-G-fields
+  [[:vp :mat4] [:sun-dir :vec4] [:sun-col :vec4] [:sky :vec4]
+   [:light-vp0 :mat4] [:light-vp1 :mat4] [:light-vp2 :mat4] [:light-vp3 :mat4]
+   [:shadow-splits :vec4]
+   [:light-a :vec4] [:light-b :vec4] [:light-c :vec4] [:light-d :vec4]])
+
+(def cascaded-shadow-fn-body
+  [[:let :eye [:vec3 :g.sun-dir.w :g.sun-col.w :g.sky.w]]
+   [:let :view-distance [:length [:- :eye :wpos]]]
+   [:var :layer :i32 [:i 0]]
+   [:var :light-vp :mat4 :g.light-vp0]
+   [:if [:> :view-distance :g.shadow-splits.x]
+    [[:set :layer [:i 1]] [:set :light-vp :g.light-vp1]]]
+   [:if [:> :view-distance :g.shadow-splits.y]
+    [[:set :layer [:i 2]] [:set :light-vp :g.light-vp2]]]
+   [:if [:> :view-distance :g.shadow-splits.z]
+    [[:set :layer [:i 3]] [:set :light-vp :g.light-vp3]]]
+   [:let :lc [:* :light-vp [:vec4 :wpos 1.0]]]
+   [:let :ndc [:/ :lc.xyz :lc.w]]
+   [:let :uv [:vec2 [:+ [:* :ndc.x 0.5] 0.5] [:- 0.5 [:* :ndc.y 0.5]]]]
+   [:if [:|| [:< :uv.x 0.0] [:> :uv.x 1.0] [:< :uv.y 0.0]
+          [:> :uv.y 1.0] [:> :ndc.z 1.0]]
+    [[:return 1.0]]]
+   [:let :bias [:max [:* :g.light-d.y [:- 1.0 :ndl]] :g.light-d.z]]
+   [:let :texel :g.light-d.w]
+   [:var :lit 0.0]
+   [:for [:var :dx [:i -1]] [:<= :dx [:i 1]] [:++ :dx]
+    [:for [:var :dy [:i -1]] [:<= :dy [:i 1]] [:++ :dy]
+     [:+= :lit [:textureSampleCompareLevel :shadowMap :shadowSamp
+                [:+ :uv [:* [:vec2 [:f32 :dx] [:f32 :dy]] :texel]]
+                :layer [:- :ndc.z :bias]]]]]
+   [:return [:/ :lit 9.0]]])
+
+(defn cascaded-shadow-shader
+  "Depth-only shader for one layer of the shared four-layer shadow texture."
+  [cascade-index]
+  {:pre [(<= 0 cascade-index 3)]}
+  (let [matrix-field (keyword (str "g.light-vp" cascade-index))
+        body [[:let :model [:mat4 :m0 :m1 :m2 :m3]]
+              [:return [:* matrix-field :model [:vec4 :pos 1.0]]]]]
+    (w/shader
+     (w/struct* :G cascaded-G-fields)
+     (w/binding* {:group 0 :binding 0 :space :uniform} :g :G)
+     (apply w/func :vs {:stage :vertex
+                        :params [[:pos [:vec3 :f32] {:location 0}]
+                                 [:normal [:vec3 :f32] {:location 1}]
+                                 [:m0 [:vec4 :f32] {:location 2}]
+                                 [:m1 [:vec4 :f32] {:location 3}]
+                                 [:m2 [:vec4 :f32] {:location 4}]
+                                 [:m3 [:vec4 :f32] {:location 5}]
+                                 [:color [:vec4 :f32] {:location 6}]
+                                 [:material [:vec4 :f32] {:location 7}]]
+                        :ret [:builtin :position [:vec4 :f32]]} body))))
+
+(defn cascaded-lit-shader
+  "Lit shader selecting a cascade by camera distance and sampling a depth array."
+  []
+  (let [fs-body (walk/postwalk-replace {:shadow :cascaded-shadow} lit-fs-body)]
+    (w/shader
+     (w/struct* :G cascaded-G-fields)
+     (w/binding* {:group 0 :binding 0 :space :uniform} :g :G)
+     (w/binding* {:group 0 :binding 1} :shadowMap "texture_depth_2d_array")
+     (w/binding* {:group 0 :binding 2} :shadowSamp "sampler_comparison")
+     (apply w/func :cascaded-shadow
+            {:params [[:wpos [:vec3 :f32]] [:ndl :f32]] :ret :f32}
+            cascaded-shadow-fn-body)
+     (w/struct* :VO VO-fields)
+     (apply w/func :vs {:stage :vertex
+                        :params [[:pos [:vec3 :f32] {:location 0}]
+                                 [:normal [:vec3 :f32] {:location 1}]
+                                 [:m0 [:vec4 :f32] {:location 2}]
+                                 [:m1 [:vec4 :f32] {:location 3}]
+                                 [:m2 [:vec4 :f32] {:location 4}]
+                                 [:m3 [:vec4 :f32] {:location 5}]
+                                 [:color [:vec4 :f32] {:location 6}]
+                                 [:material [:vec4 :f32] {:location 7}]]
+                        :ret :VO} vs-body)
+     (apply w/func :fs {:stage :fragment :params [[:i :VO]]
+                        :ret [:loc 0 [:vec4 :f32]]} fs-body))))

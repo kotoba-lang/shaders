@@ -100,3 +100,12 @@ fn vs(@location(0) pos: vec3<f32>, @location(1) normal: vec3<f32>,
 (deftest shadow-shader-matches-the-shipped-shader
   (is (= (canon golden-shadow) (canon (sh/shadow-shader)))
       "the kami.wgsl-generated depth pass is token-equivalent to the shipped SHADOW-WGSL"))
+
+(deftest cascaded-shadow-contract
+  (let [lit (sh/cascaded-lit-shader)]
+    (is (str/includes? lit "texture_depth_2d_array"))
+    (is (str/includes? lit "shadow_splits"))
+    (is (str/includes? lit "textureSampleCompareLevel")))
+  (doseq [cascade (range 4)]
+    (let [depth (sh/cascaded-shadow-shader cascade)]
+      (is (str/includes? depth (str "g.light_vp" cascade))))))
