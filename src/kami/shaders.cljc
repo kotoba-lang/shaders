@@ -1,7 +1,7 @@
 (ns kami.shaders
   "Game shaders as data — the kami.wgsl EDN AST for the lit instanced renderer's fragment lighting.
    The lighting model (hemisphere ambient, Lambert, Blinn-Phong spec, Fresnel rim, PCF shadow,
-   Reinhard tonemap, gamma) is authored as data, so it reads and forks like the scene, and ONE
+   ACES filmic tonemap, gamma) is authored as data, so it reads and forks like the scene, and ONE
    source generates the WGSL the web (kami.webgpu) runs — and, in time, the native kami-webgpu-rs
    path (parity by source). The struct/bindings/shadow/vertex preamble stays a template in
    kami.webgpu; this is the fragment a designer actually tunes. `.cljc` → browser + bb/JVM."
@@ -29,7 +29,12 @@
                 [:* :specTint :g.sun-col.rgb :spec :sh]
                 [:* :g.sky.rgb :rim]
                 [:* :i.col :emissive]]]
-   [:set :c [:/ :c [:+ :c [:vec3 1.0]]]]            ;; Reinhard tonemap
+   ;; Narkowicz ACES filmic fit: preserves highlight colour and rolls off
+   ;; overbright emissive/sun contributions more naturally than Reinhard.
+   [:set :c [:clamp
+             [:/ [:* :c [:+ [:* 2.51 :c] [:vec3 0.03]]]
+              [:+ [:* :c [:+ [:* 2.43 :c] [:vec3 0.59]]] [:vec3 0.14]]]
+             [:vec3 0.0] [:vec3 1.0]]]
    [:set :c [:pow :c [:vec3 [:/ 1.0 :g.light-d.x]]]] ;; gamma
    [:return [:vec4 :c 1.0]]])
 

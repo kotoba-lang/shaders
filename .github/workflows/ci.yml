@@ -10,11 +10,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # depends on kami.wgsl (kotoba-lang/webgpu) directly — see deps.edn / kotoba-lang/wgsl's
-      # CHANGELOG.md for the 2026-07-09 dedup rationale.
-      - run: git clone --depth 1 https://github.com/kotoba-lang/webgpu.git ../webgpu
-      - run: git clone --depth 1 https://github.com/kotoba-lang/org-w3-webgpu.git ../org-w3-webgpu
-      - run: git clone --depth 1 https://github.com/kotoba-lang/expr.git ../expr
+      # Local-root dependencies intentionally mirror the west workspace. CI
+      # materializes the same sibling layout before Clojure builds its classpath.
+      - name: Checkout KAMI shader dependency workspace
+        run: |
+          for repo in wgsl expr; do
+            git clone --depth 1 "https://github.com/kotoba-lang/${repo}.git" "../${repo}"
+          done
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
