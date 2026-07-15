@@ -241,7 +241,8 @@
                   field))
               VO-fields)
         [:uv [:vec2 :f32] {:location 4}]
-        [:tangent [:vec4 :f32] {:location 5}]))
+        [:tangent [:vec4 :f32] {:location 5}]
+        [:biome [:vec3 :f32] {:location 6}]))
 
 (def textured-vs-body
   [[:let :model [:mat4 :m0 :m1 :m2 :m3]]
@@ -263,6 +264,7 @@
    [:set :o.mat :material]
    [:set :o.uv [:+ [:* :uv :uvTransform.xy] :uvTransform.zw]]
    [:set :o.tangent [:vec4 [:normalize [:. [:* :model [:vec4 :tangent.xyz 0.0]] :xyz]] :tangent.w]]
+   [:set :o.biome :biomeWeights]
    [:return :o]])
 
 (def textured-pbr-fs-body
@@ -273,14 +275,34 @@
    [:let :baseN [:normalize :i.n]]
    [:let :T [:normalize [:- :i.tangent.xyz [:* :baseN [:dot :baseN :i.tangent.xyz]]]]]
    [:let :B [:* [:normalize [:cross :baseN :T]] :i.tangent.w]]
-   [:let :mapN [:- [:* [:textureSample :normalTex :materialSamp :i.uv :materialLayer] :2.0] [:vec4 1.0]]]
+   [:let :biomeSum [:+ :i.biome.x :i.biome.y :i.biome.z]]
+   [:let :biomeUse [:clamp :biomeSum 0.0 1.0]]
+   [:let :bw [:/ :i.biome [:max :biomeSum 0.0001]]]
+   ;; Fixed shared array convention: grass=layer2/index1, soil=layer1/index0,
+   ;; rock=layer3/index2. CPU weights carry slope/height/macro art direction.
+   [:let :biomeAlbedo
+    [:+ [:* [:. [:textureSample :albedoTex :materialSamp :i.uv 1] :rgb] :bw.x]
+        [:* [:. [:textureSample :albedoTex :materialSamp :i.uv 0] :rgb] :bw.y]
+        [:* [:. [:textureSample :albedoTex :materialSamp :i.uv 2] :rgb] :bw.z]]]
+   [:let :biomeNormal
+    [:+ [:* [:textureSample :normalTex :materialSamp :i.uv 1] :bw.x]
+        [:* [:textureSample :normalTex :materialSamp :i.uv 0] :bw.y]
+        [:* [:textureSample :normalTex :materialSamp :i.uv 2] :bw.z]]]
+   [:let :biomeMr
+    [:+ [:* [:textureSample :metallicRoughnessTex :materialSamp :i.uv 1] :bw.x]
+        [:* [:textureSample :metallicRoughnessTex :materialSamp :i.uv 0] :bw.y]
+        [:* [:textureSample :metallicRoughnessTex :materialSamp :i.uv 2] :bw.z]]]
+   [:let :singleNormal [:textureSample :normalTex :materialSamp :i.uv :materialLayer]]
+   [:let :mapN [:- [:* [:mix :singleNormal :biomeNormal :biomeUse] 2.0] [:vec4 1.0]]]
    [:let :mappedN [:normalize [:+ [:* :T :mapN.x] [:* :B :mapN.y] [:* :baseN :mapN.z]]]]
    [:let :N [:normalize [:mix :baseN :mappedN :useTex]]]
    [:let :albedoSample [:textureSample :albedoTex :materialSamp :i.uv :materialLayer]]
-   [:let :baseColor [:* :i.col [:mix [:vec3 1.0] :albedoSample.rgb :useTex]]]
+   [:let :resolvedAlbedo [:mix :albedoSample.rgb :biomeAlbedo :biomeUse]]
+   [:let :baseColor [:* :i.col [:mix [:vec3 1.0] :resolvedAlbedo [:max :useTex :biomeUse]]]]
    [:let :mr [:textureSample :metallicRoughnessTex :materialSamp :i.uv :materialLayer]]
-   [:let :metallic [:clamp [:* :i.mat.x [:mix 1.0 :mr.b :useTex]] 0.0 1.0]]
-   [:let :rough [:clamp [:* :i.mat.y [:mix 1.0 :mr.g :useTex]] 0.04 1.0]]
+   [:let :resolvedMr [:mix :mr :biomeMr :biomeUse]]
+   [:let :metallic [:clamp [:* :i.mat.x [:mix 1.0 :resolvedMr.b [:max :useTex :biomeUse]]] 0.0 1.0]]
+   [:let :rough [:clamp [:* :i.mat.y [:mix 1.0 :resolvedMr.g [:max :useTex :biomeUse]]] 0.04 1.0]]
    [:let :emissive :i.mat.z]
    [:let :L [:normalize [:- :g.sun-dir.xyz]]]
    [:let :eye [:vec3 :g.sun-dir.w :g.sun-col.w :g.sky.w]]
@@ -356,7 +378,8 @@
                                [:material [:vec4 :f32] {:location 7}]
                                [:uv [:vec2 :f32] {:location 8}]
                                [:tangent [:vec4 :f32] {:location 9}]
-                               [:uvTransform [:vec4 :f32] {:location 10}]]
+                               [:uvTransform [:vec4 :f32] {:location 10}]
+                               [:biomeWeights [:vec3 :f32] {:location 11}]]
                       :ret :VO} textured-vs-body)
    (apply w/func :fs {:stage :fragment :params [[:i :VO]]
                       :ret [:loc 0 [:vec4 :f32]]} fs-body)))
