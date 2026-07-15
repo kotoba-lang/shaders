@@ -281,7 +281,6 @@
    [:let :ndv [:max [:dot :N :V] 0.001]]
    [:let :ndh [:max [:dot :N :H] 0.0]]
    [:let :vdh [:max [:dot :V :H] 0.0]]
-   [:let :amb [:mix :g.light-a.rgb [:* :g.sky.rgb :g.light-a.w] [:+ [:* :N.y 0.5] 0.5]]]
    ;; Cook-Torrance GGX, matching the glTF metallic-roughness BRDF.
    [:let :alpha [:* :rough :rough]]
    [:let :alpha2 [:* :alpha :alpha]]
@@ -296,11 +295,27 @@
    [:let :specular [:/ [:* :F :D :G] [:+ [:* 4.0 :ndv :ndl] 0.001]]]
    [:let :diffuseWeight [:* [:- [:vec3 1.0] :F] [:- 1.0 :metallic]]]
    [:let :brdf [:+ [:/ [:* :diffuseWeight :baseColor] 3.14159265] :specular]]
-   [:let :rim [:* [:pow [:- 1.0 [:max [:dot :N :V] 0.0]] :g.light-b.w] :g.light-b.z]]
+   ;; Split-sum image-based lighting. The specular cube's mip axis is the
+   ;; prefiltered roughness axis; the BRDF LUT stores the scale/bias integral.
+   [:let :Fibl [:+ :F0 [:* [:- [:vec3 1.0] :F0]
+                           [:pow [:- 1.0 :ndv] 5.0]]]]
+   [:let :iblDiffuseWeight [:* [:- [:vec3 1.0] :Fibl] [:- 1.0 :metallic]]]
+   [:let :irradiance [:. [:textureSample :irradianceTex :materialSamp :N] :rgb]]
+   [:let :R [:reflect [:- :V] :N]]
+   [:let :maxEnvironmentLod
+    [:- [:f32 [:textureNumLevels :prefilteredSpecularTex]] 1.0]]
+   [:let :prefiltered [:. [:textureSampleLevel :prefilteredSpecularTex
+                            :materialSamp :R [:* :rough :maxEnvironmentLod]] :rgb]]
+   [:let :environmentBrdf [:. [:textureSample :brdfLut :materialSamp
+                                [:vec2 :ndv :rough]] :rg]]
+   [:let :iblSpecular [:* :prefiltered
+                        [:+ [:* :Fibl :environmentBrdf.x] :environmentBrdf.y]]]
+   [:let :ibl [:* [:+ [:* :iblDiffuseWeight :irradiance :baseColor]
+                       :iblSpecular]
+                :g.light-a.w]]
    [:let :sh [:cascaded-shadow :i.wpos :ndl]]
-   [:var :c [:+ [:* :baseColor :amb [:- 1.0 :metallic]]
+   [:var :c [:+ :ibl
                 [:* :brdf :g.sun-col.rgb :g.light-c.z :ndl :sh]
-                [:* :g.sky.rgb :rim]
                 [:* :baseColor :emissive]]]
    [:return [:vec4 :c 1.0]]])
 
@@ -314,6 +329,9 @@
    (w/binding* {:group 0 :binding 4} :normalTex "texture_2d_array<f32>")
    (w/binding* {:group 0 :binding 5} :metallicRoughnessTex "texture_2d_array<f32>")
    (w/binding* {:group 0 :binding 6} :materialSamp "sampler")
+   (w/binding* {:group 0 :binding 7} :irradianceTex "texture_cube<f32>")
+   (w/binding* {:group 0 :binding 8} :prefilteredSpecularTex "texture_cube<f32>")
+   (w/binding* {:group 0 :binding 9} :brdfLut "texture_2d<f32>")
    (apply w/func :cascaded-shadow
           {:params [[:wpos [:vec3 :f32]] [:ndl :f32]] :ret :f32}
           cascaded-shadow-fn-body)
