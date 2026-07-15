@@ -11,3 +11,6 @@
 (def shadow-vs-body k/shadow-vs-body)
 (def shadow-shader k/shadow-shader)
 (def lit-shader k/lit-shader)
+(def cascaded-G-fields k/cascaded-G-fields)
+(def cascaded-shadow-shader k/cascaded-shadow-shader)
+(def cascaded-lit-shader k/cascaded-lit-shader)
