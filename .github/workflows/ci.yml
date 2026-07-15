@@ -14,9 +14,7 @@ jobs:
       # materializes the same sibling layout before Clojure builds its classpath.
       - name: Checkout KAMI shader dependency workspace
         run: |
-          for repo in wgsl webgpu org-w3-webgpu expr sprite-gpu sprite2d sky \
-            render-shaders scene2d gpu webgl dance physics fsm netsync pipelines \
-            level host playwright cartpole-math; do
+          for repo in wgsl expr; do
             git clone --depth 1 "https://github.com/kotoba-lang/${repo}.git" "../${repo}"
           done
       - uses: actions/setup-java@v4
