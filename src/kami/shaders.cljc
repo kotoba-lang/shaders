@@ -242,7 +242,8 @@
               VO-fields)
         [:uv [:vec2 :f32] {:location 4}]
         [:tangent [:vec4 :f32] {:location 5}]
-        [:biome [:vec3 :f32] {:location 6}]))
+        [:biome [:vec3 :f32] {:location 6}]
+        [:biomeLayers [:vec3 :f32] {:location 7}]))
 
 (def textured-vs-body
   [[:let :model [:mat4 :m0 :m1 :m2 :m3]]
@@ -265,6 +266,7 @@
    [:set :o.uv [:+ [:* :uv :uvTransform.xy] :uvTransform.zw]]
    [:set :o.tangent [:vec4 [:normalize [:. [:* :model [:vec4 :tangent.xyz 0.0]] :xyz]] :tangent.w]]
    [:set :o.biome :biomeWeights]
+   [:set :o.biomeLayers :biomeLayerIndices]
    [:return :o]])
 
 (def textured-pbr-fs-body
@@ -278,20 +280,23 @@
    [:let :biomeSum [:+ :i.biome.x :i.biome.y :i.biome.z]]
    [:let :biomeUse [:clamp :biomeSum 0.0 1.0]]
    [:let :bw [:/ :i.biome [:max :biomeSum 0.0001]]]
-   ;; Shared render contract uses zero-based texture-array indices directly:
-   ;; grass=2, soil=1, rock=3. CPU weights carry slope/height/macro art direction.
+   [:let :grassLayer [:i32 [:max :i.biomeLayers.x 0.0]]]
+   [:let :soilLayer [:i32 [:max :i.biomeLayers.y 0.0]]]
+   [:let :rockLayer [:i32 [:max :i.biomeLayers.z 0.0]]]
+   ;; CPU contract supplies both slope/height/macro weights and the material
+   ;; library's zero-based array indices; no scene-specific order is assumed.
    [:let :biomeAlbedo
-    [:+ [:* [:. [:textureSample :albedoTex :materialSamp :i.uv 2] :rgb] :bw.x]
-        [:* [:. [:textureSample :albedoTex :materialSamp :i.uv 1] :rgb] :bw.y]
-        [:* [:. [:textureSample :albedoTex :materialSamp :i.uv 3] :rgb] :bw.z]]]
+    [:+ [:* [:. [:textureSample :albedoTex :materialSamp :i.uv :grassLayer] :rgb] :bw.x]
+        [:* [:. [:textureSample :albedoTex :materialSamp :i.uv :soilLayer] :rgb] :bw.y]
+        [:* [:. [:textureSample :albedoTex :materialSamp :i.uv :rockLayer] :rgb] :bw.z]]]
    [:let :biomeNormal
-    [:+ [:* [:textureSample :normalTex :materialSamp :i.uv 2] :bw.x]
-        [:* [:textureSample :normalTex :materialSamp :i.uv 1] :bw.y]
-        [:* [:textureSample :normalTex :materialSamp :i.uv 3] :bw.z]]]
+    [:+ [:* [:textureSample :normalTex :materialSamp :i.uv :grassLayer] :bw.x]
+        [:* [:textureSample :normalTex :materialSamp :i.uv :soilLayer] :bw.y]
+        [:* [:textureSample :normalTex :materialSamp :i.uv :rockLayer] :bw.z]]]
    [:let :biomeMr
-    [:+ [:* [:textureSample :metallicRoughnessTex :materialSamp :i.uv 2] :bw.x]
-        [:* [:textureSample :metallicRoughnessTex :materialSamp :i.uv 1] :bw.y]
-        [:* [:textureSample :metallicRoughnessTex :materialSamp :i.uv 3] :bw.z]]]
+    [:+ [:* [:textureSample :metallicRoughnessTex :materialSamp :i.uv :grassLayer] :bw.x]
+        [:* [:textureSample :metallicRoughnessTex :materialSamp :i.uv :soilLayer] :bw.y]
+        [:* [:textureSample :metallicRoughnessTex :materialSamp :i.uv :rockLayer] :bw.z]]]
    [:let :singleNormal [:textureSample :normalTex :materialSamp :i.uv :materialLayer]]
    [:let :mapN [:- [:* [:mix :singleNormal :biomeNormal :biomeUse] 2.0] [:vec4 1.0]]]
    [:let :mappedN [:normalize [:+ [:* :T :mapN.x] [:* :B :mapN.y] [:* :baseN :mapN.z]]]]
@@ -379,7 +384,8 @@
                                [:uv [:vec2 :f32] {:location 8}]
                                [:tangent [:vec4 :f32] {:location 9}]
                                [:uvTransform [:vec4 :f32] {:location 10}]
-                               [:biomeWeights [:vec3 :f32] {:location 11}]]
+                               [:biomeWeights [:vec3 :f32] {:location 11}]
+                               [:biomeLayerIndices [:vec3 :f32] {:location 12}]]
                       :ret :VO} textured-vs-body)
    (apply w/func :fs {:stage :fragment :params [[:i :VO]]
                       :ret [:loc 0 [:vec4 :f32]]} fs-body)))
