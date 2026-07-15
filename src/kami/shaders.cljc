@@ -261,7 +261,7 @@
    [:set :o.col :color.rgb]
    [:set :o.wpos :world.xyz]
    [:set :o.mat :material]
-   [:set :o.uv :uv]
+   [:set :o.uv [:+ [:* :uv :uvTransform.xy] :uvTransform.zw]]
    [:set :o.tangent [:vec4 [:normalize [:. [:* :model [:vec4 :tangent.xyz 0.0]] :xyz]] :tangent.w]]
    [:return :o]])
 
@@ -355,7 +355,8 @@
                                [:color [:vec4 :f32] {:location 6}]
                                [:material [:vec4 :f32] {:location 7}]
                                [:uv [:vec2 :f32] {:location 8}]
-                               [:tangent [:vec4 :f32] {:location 9}]]
+                               [:tangent [:vec4 :f32] {:location 9}]
+                               [:uvTransform [:vec4 :f32] {:location 10}]]
                       :ret :VO} textured-vs-body)
    (apply w/func :fs {:stage :fragment :params [[:i :VO]]
                       :ret [:loc 0 [:vec4 :f32]]} fs-body)))

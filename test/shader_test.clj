@@ -138,6 +138,8 @@ fn vs(@location(0) pos: vec3<f32>, @location(1) normal: vec3<f32>,
     (is (str/includes? wgsl "dot(m1.xyz, m1.xyz)"))
     (is (str/includes? wgsl "o.n = normalWorld;"))
     (is (str/includes? wgsl "@location(8) uv: vec2<f32>"))
+    (is (str/includes? wgsl "@location(10) uvTransform: vec4<f32>"))
+    (is (str/includes? wgsl "o.uv = ((uv * uvTransform.xy) + uvTransform.zw);"))
     (is (str/includes? wgsl "cross(baseN, T)"))
     (is (str/includes? wgsl "mr.g"))
     (is (str/includes? wgsl "mr.b"))
