@@ -16,5 +16,6 @@
 (def cascaded-lit-shader k/cascaded-lit-shader)
 (def cascaded-hdr-shader k/cascaded-hdr-shader)
 (def cascaded-textured-hdr-shader k/cascaded-textured-hdr-shader)
+(def cascaded-textured-lit-shader k/cascaded-textured-lit-shader)
 (def bloom-shader k/bloom-shader)
 (def hdr-composite-shader k/hdr-composite-shader)

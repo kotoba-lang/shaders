@@ -288,11 +288,7 @@
                 [:* :baseColor :emissive]]]
    [:return [:vec4 :c 1.0]]])
 
-(defn cascaded-textured-hdr-shader
-  "Linear-HDR PBR shader with sRGB base color, tangent-space normal, and
-   glTF metallic-roughness bindings. material.w enables texture sampling per
-   instance, so untextured and textured objects share one instanced pipeline."
-  []
+(defn- cascaded-textured-shader* [fs-body]
   (w/shader
    (w/struct* :G cascaded-G-fields)
    (w/binding* {:group 0 :binding 0 :space :uniform} :g :G)
@@ -319,7 +315,28 @@
                                [:tangent [:vec4 :f32] {:location 9}]]
                       :ret :VO} textured-vs-body)
    (apply w/func :fs {:stage :fragment :params [[:i :VO]]
-                      :ret [:loc 0 [:vec4 :f32]]} textured-pbr-fs-body)))
+                      :ret [:loc 0 [:vec4 :f32]]} fs-body)))
+
+(defn cascaded-textured-hdr-shader
+  "Linear-HDR PBR shader with sRGB base color, tangent-space normal, and
+   glTF metallic-roughness bindings. material.w enables texture sampling per
+   instance, so untextured and textured objects share one instanced pipeline."
+  []
+  (cascaded-textured-shader* textured-pbr-fs-body))
+
+(defn cascaded-textured-lit-shader
+  "Display-ready sibling of cascaded-textured-hdr-shader. Applies ACES+gamma
+   in-fragment for the adaptive direct-to-swapchain saturation tier."
+  []
+  (let [display-body
+        (into (vec (drop-last textured-pbr-fs-body))
+              [[:set :c [:clamp
+                         [:/ [:* :c [:+ [:* 2.51 :c] [:vec3 0.03]]]
+                          [:+ [:* :c [:+ [:* 2.43 :c] [:vec3 0.59]]] [:vec3 0.14]]]
+                         [:vec3 0.0] [:vec3 1.0]]]
+               [:set :c [:pow :c [:vec3 [:/ 1.0 :g.light-d.x]]]]
+               [:return [:vec4 :c 1.0]]])]
+    (cascaded-textured-shader* display-body)))
 
 (def fullscreen-vertex-wgsl
   "struct FullscreenOut { @builtin(position) position: vec4<f32>, @location(0) uv: vec2<f32> };
