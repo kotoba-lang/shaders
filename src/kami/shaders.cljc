@@ -278,20 +278,20 @@
    [:let :biomeSum [:+ :i.biome.x :i.biome.y :i.biome.z]]
    [:let :biomeUse [:clamp :biomeSum 0.0 1.0]]
    [:let :bw [:/ :i.biome [:max :biomeSum 0.0001]]]
-   ;; Fixed shared array convention: grass=layer2/index1, soil=layer1/index0,
-   ;; rock=layer3/index2. CPU weights carry slope/height/macro art direction.
+   ;; Shared render contract uses zero-based texture-array indices directly:
+   ;; grass=2, soil=1, rock=3. CPU weights carry slope/height/macro art direction.
    [:let :biomeAlbedo
-    [:+ [:* [:. [:textureSample :albedoTex :materialSamp :i.uv 1] :rgb] :bw.x]
-        [:* [:. [:textureSample :albedoTex :materialSamp :i.uv 0] :rgb] :bw.y]
-        [:* [:. [:textureSample :albedoTex :materialSamp :i.uv 2] :rgb] :bw.z]]]
+    [:+ [:* [:. [:textureSample :albedoTex :materialSamp :i.uv 2] :rgb] :bw.x]
+        [:* [:. [:textureSample :albedoTex :materialSamp :i.uv 1] :rgb] :bw.y]
+        [:* [:. [:textureSample :albedoTex :materialSamp :i.uv 3] :rgb] :bw.z]]]
    [:let :biomeNormal
-    [:+ [:* [:textureSample :normalTex :materialSamp :i.uv 1] :bw.x]
-        [:* [:textureSample :normalTex :materialSamp :i.uv 0] :bw.y]
-        [:* [:textureSample :normalTex :materialSamp :i.uv 2] :bw.z]]]
+    [:+ [:* [:textureSample :normalTex :materialSamp :i.uv 2] :bw.x]
+        [:* [:textureSample :normalTex :materialSamp :i.uv 1] :bw.y]
+        [:* [:textureSample :normalTex :materialSamp :i.uv 3] :bw.z]]]
    [:let :biomeMr
-    [:+ [:* [:textureSample :metallicRoughnessTex :materialSamp :i.uv 1] :bw.x]
-        [:* [:textureSample :metallicRoughnessTex :materialSamp :i.uv 0] :bw.y]
-        [:* [:textureSample :metallicRoughnessTex :materialSamp :i.uv 2] :bw.z]]]
+    [:+ [:* [:textureSample :metallicRoughnessTex :materialSamp :i.uv 2] :bw.x]
+        [:* [:textureSample :metallicRoughnessTex :materialSamp :i.uv 1] :bw.y]
+        [:* [:textureSample :metallicRoughnessTex :materialSamp :i.uv 3] :bw.z]]]
    [:let :singleNormal [:textureSample :normalTex :materialSamp :i.uv :materialLayer]]
    [:let :mapN [:- [:* [:mix :singleNormal :biomeNormal :biomeUse] 2.0] [:vec4 1.0]]]
    [:let :mappedN [:normalize [:+ [:* :T :mapN.x] [:* :B :mapN.y] [:* :baseN :mapN.z]]]]

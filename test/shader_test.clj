@@ -144,6 +144,12 @@ fn vs(@location(0) pos: vec3<f32>, @location(1) normal: vec3<f32>,
     (is (str/includes? wgsl "let biomeAlbedo ="))
     (is (str/includes? wgsl "let biomeNormal ="))
     (is (str/includes? wgsl "let biomeMr ="))
+    ;; Must match kotoba.render.terrain-biome/default-biome texture-layer ABI:
+    ;; grass=2, soil=1, rock=3 (zero-based uploaded array indices).
+    (doseq [texture ["albedoTex" "normalTex" "metallicRoughnessTex"]
+            layer [2 1 3]]
+      (is (str/includes? wgsl
+                         (str "textureSample(" texture ", materialSamp, i.uv, " layer ".0)"))))
     (is (str/includes? wgsl "o.uv = ((uv * uvTransform.xy) + uvTransform.zw);"))
     (is (str/includes? wgsl "cross(baseN, T)"))
     (is (str/includes? wgsl "resolvedMr.g"))
