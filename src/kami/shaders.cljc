@@ -246,9 +246,18 @@
 (def textured-vs-body
   [[:let :model [:mat4 :m0 :m1 :m2 :m3]]
    [:let :world [:* :model [:vec4 :pos 1.0]]]
+   ;; The instance model contains rotation * non-uniform scale. Transforming a
+   ;; normal with model directly bends lighting on tall/thin geometry; dividing
+   ;; each basis column by its squared length is inverse-transpose(model3x3)
+   ;; for this affine form, without carrying another per-instance matrix.
+   [:let :normalWorld
+    [:normalize
+     [:+ [:/ [:* :m0.xyz :normal.x] [:max [:dot :m0.xyz :m0.xyz] 0.000001]]
+         [:/ [:* :m1.xyz :normal.y] [:max [:dot :m1.xyz :m1.xyz] 0.000001]]
+         [:/ [:* :m2.xyz :normal.z] [:max [:dot :m2.xyz :m2.xyz] 0.000001]]]]]
    [:decl :o :VO]
    [:set :o.clip [:* :g.vp :world]]
-   [:set :o.n [:normalize [:. [:* :model [:vec4 :normal 0.0]] :xyz]]]
+   [:set :o.n :normalWorld]
    [:set :o.col :color.rgb]
    [:set :o.wpos :world.xyz]
    [:set :o.mat :material]
