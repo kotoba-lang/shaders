@@ -8,7 +8,7 @@
             [clojure.string :as str]
             [kami.shaders :as sh]))
 
-;; the exact fragment that shipped in kotoba.webgpu (the on-screen-verified lighting).
+;; Golden fragment for the current production lighting contract.
 (def golden-fs
   "@fragment
 fn fs(i: VO) -> @location(0) vec4<f32> {
@@ -32,7 +32,9 @@ fn fs(i: VO) -> @location(0) vec4<f32> {
         + specTint * g.sun_col.rgb * spec * sh
         + g.sky.rgb * rim
         + i.col * emissive;
-  c = c / (c + vec3<f32>(1.0));
+  c = clamp((c * (2.51*c + vec3<f32>(0.03))) /
+            (c * (2.43*c + vec3<f32>(0.59)) + vec3<f32>(0.14)),
+            vec3<f32>(0.0), vec3<f32>(1.0));
   c = pow(c, vec3<f32>(1.0/g.light_d.x));
   return vec4<f32>(c, 1.0);
 }")
@@ -41,9 +43,9 @@ fn fs(i: VO) -> @location(0) vec4<f32> {
 ;; in the same order ⇒ functionally identical given kami.wgsl's tested operator precedence.
 (defn- canon [s] (str/replace s #"[\s()]" ""))
 
-(deftest lit-fs-matches-the-shipped-shader
+(deftest lit-fs-matches-the-production-contract
   (is (= (canon golden-fs) (canon (sh/lit-fs)))
-      "kami.wgsl-generated fragment is token-equivalent to the hand-written, on-screen-verified WGSL"))
+      "kami.wgsl-generated fragment is token-equivalent to the production WGSL contract"))
 
 ;; the rest of the shipped shader: uniforms, shadow-map bindings, PCF shadow fn, varyings, vertex.
 (def golden-preamble
@@ -79,9 +81,9 @@ fn vs(@location(0) pos: vec3<f32>, @location(1) normal: vec3<f32>,
   o.mat = material.xyz; return o;
 }")
 
-(deftest lit-shader-matches-the-shipped-shader
+(deftest lit-shader-matches-the-production-contract
   (is (= (canon (str golden-preamble "\n" golden-fs)) (canon (sh/lit-shader)))
-      "the whole kami.wgsl-generated shader (struct/bindings/shadow/vertex/fragment) is token-equivalent to the shipped WGSL"))
+      "the complete generated shader is token-equivalent to the production WGSL contract"))
 
 ;; the depth-only shadow pass (vertex from the sun's POV).
 (def golden-shadow
@@ -98,4 +100,3 @@ fn vs(@location(0) pos: vec3<f32>, @location(1) normal: vec3<f32>,
 (deftest shadow-shader-matches-the-shipped-shader
   (is (= (canon golden-shadow) (canon (sh/shadow-shader)))
       "the kami.wgsl-generated depth pass is token-equivalent to the shipped SHADOW-WGSL"))
-
