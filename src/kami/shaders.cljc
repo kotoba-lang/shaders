@@ -232,6 +232,95 @@
      (apply w/func :fs {:stage :fragment :params [[:i :VO]]
                         :ret [:loc 0 [:vec4 :f32]]} fs-body))))
 
+;; ── textured metallic-roughness PBR -----------------------------------------
+
+(def textured-VO-fields
+  (conj (mapv (fn [field]
+                (if (= :mat (first field))
+                  [:mat [:vec4 :f32] {:location 3}]
+                  field))
+              VO-fields)
+        [:uv [:vec2 :f32] {:location 4}]
+        [:tangent [:vec4 :f32] {:location 5}]))
+
+(def textured-vs-body
+  [[:let :model [:mat4 :m0 :m1 :m2 :m3]]
+   [:let :world [:* :model [:vec4 :pos 1.0]]]
+   [:decl :o :VO]
+   [:set :o.clip [:* :g.vp :world]]
+   [:set :o.n [:normalize [:. [:* :model [:vec4 :normal 0.0]] :xyz]]]
+   [:set :o.col :color.rgb]
+   [:set :o.wpos :world.xyz]
+   [:set :o.mat :material]
+   [:set :o.uv :uv]
+   [:set :o.tangent [:vec4 [:normalize [:. [:* :model [:vec4 :tangent.xyz 0.0]] :xyz]] :tangent.w]]
+   [:return :o]])
+
+(def textured-pbr-fs-body
+  [[:let :useTex [:clamp :i.mat.w 0.0 1.0]]
+   [:let :baseN [:normalize :i.n]]
+   [:let :T [:normalize [:- :i.tangent.xyz [:* :baseN [:dot :baseN :i.tangent.xyz]]]]]
+   [:let :B [:* [:normalize [:cross :baseN :T]] :i.tangent.w]]
+   [:let :mapN [:- [:* [:textureSample :normalTex :materialSamp :i.uv] :2.0] [:vec4 1.0]]]
+   [:let :mappedN [:normalize [:+ [:* :T :mapN.x] [:* :B :mapN.y] [:* :baseN :mapN.z]]]]
+   [:let :N [:normalize [:mix :baseN :mappedN :useTex]]]
+   [:let :albedoSample [:textureSample :albedoTex :materialSamp :i.uv]]
+   [:let :baseColor [:* :i.col [:mix [:vec3 1.0] :albedoSample.rgb :useTex]]]
+   [:let :mr [:textureSample :metallicRoughnessTex :materialSamp :i.uv]]
+   [:let :metallic [:clamp [:* :i.mat.x [:mix 1.0 :mr.b :useTex]] 0.0 1.0]]
+   [:let :rough [:clamp [:* :i.mat.y [:mix 1.0 :mr.g :useTex]] 0.04 1.0]]
+   [:let :emissive :i.mat.z]
+   [:let :L [:normalize [:- :g.sun-dir.xyz]]]
+   [:let :eye [:vec3 :g.sun-dir.w :g.sun-col.w :g.sky.w]]
+   [:let :V [:normalize [:- :eye :i.wpos]]]
+   [:let :H [:normalize [:+ :L :V]]]
+   [:let :ndl [:max [:dot :N :L] 0.0]]
+   [:let :amb [:mix :g.light-a.rgb [:* :g.sky.rgb :g.light-a.w] [:+ [:* :N.y 0.5] 0.5]]]
+   [:let :shininess [:mix :g.light-c.x :g.light-c.y [:- 1.0 :rough]]]
+   [:let :specStr [:mix :g.light-b.x :g.light-b.y :metallic]]
+   [:let :specTint [:mix [:vec3 1.0] :baseColor :metallic]]
+   [:let :spec [:* [:pow [:max [:dot :N :H] 0.0] :shininess] :specStr]]
+   [:let :rim [:* [:pow [:- 1.0 [:max [:dot :N :V] 0.0]] :g.light-b.w] :g.light-b.z]]
+   [:let :sh [:cascaded-shadow :i.wpos :ndl]]
+   [:var :c [:+ [:* :baseColor [:+ :amb [:* :ndl :g.sun-col.rgb :g.light-c.z [:- 1.0 [:* :metallic :g.light-c.w]] :sh]]]
+                [:* :specTint :g.sun-col.rgb :spec :sh]
+                [:* :g.sky.rgb :rim]
+                [:* :baseColor :emissive]]]
+   [:return [:vec4 :c 1.0]]])
+
+(defn cascaded-textured-hdr-shader
+  "Linear-HDR PBR shader with sRGB base color, tangent-space normal, and
+   glTF metallic-roughness bindings. material.w enables texture sampling per
+   instance, so untextured and textured objects share one instanced pipeline."
+  []
+  (w/shader
+   (w/struct* :G cascaded-G-fields)
+   (w/binding* {:group 0 :binding 0 :space :uniform} :g :G)
+   (w/binding* {:group 0 :binding 1} :shadowMap "texture_depth_2d_array")
+   (w/binding* {:group 0 :binding 2} :shadowSamp "sampler_comparison")
+   (w/binding* {:group 0 :binding 3} :albedoTex "texture_2d<f32>")
+   (w/binding* {:group 0 :binding 4} :normalTex "texture_2d<f32>")
+   (w/binding* {:group 0 :binding 5} :metallicRoughnessTex "texture_2d<f32>")
+   (w/binding* {:group 0 :binding 6} :materialSamp "sampler")
+   (apply w/func :cascaded-shadow
+          {:params [[:wpos [:vec3 :f32]] [:ndl :f32]] :ret :f32}
+          cascaded-shadow-fn-body)
+   (w/struct* :VO textured-VO-fields)
+   (apply w/func :vs {:stage :vertex
+                      :params [[:pos [:vec3 :f32] {:location 0}]
+                               [:normal [:vec3 :f32] {:location 1}]
+                               [:m0 [:vec4 :f32] {:location 2}]
+                               [:m1 [:vec4 :f32] {:location 3}]
+                               [:m2 [:vec4 :f32] {:location 4}]
+                               [:m3 [:vec4 :f32] {:location 5}]
+                               [:color [:vec4 :f32] {:location 6}]
+                               [:material [:vec4 :f32] {:location 7}]
+                               [:uv [:vec2 :f32] {:location 8}]
+                               [:tangent [:vec4 :f32] {:location 9}]]
+                      :ret :VO} textured-vs-body)
+   (apply w/func :fs {:stage :fragment :params [[:i :VO]]
+                      :ret [:loc 0 [:vec4 :f32]]} textured-pbr-fs-body)))
+
 (def fullscreen-vertex-wgsl
   "struct FullscreenOut { @builtin(position) position: vec4<f32>, @location(0) uv: vec2<f32> };
 @vertex fn vs(@builtin(vertex_index) i: u32) -> FullscreenOut {
