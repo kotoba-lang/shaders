@@ -258,15 +258,18 @@
 
 (def textured-pbr-fs-body
   [[:let :useTex [:clamp :i.mat.w 0.0 1.0]]
+   ;; material.w = 0 selects the untextured fallback; positive values are the
+   ;; one-based PBR texture-array layer carried by each instance.
+   [:let :materialLayer [:i32 [:max [:- :i.mat.w 1.0] 0.0]]]
    [:let :baseN [:normalize :i.n]]
    [:let :T [:normalize [:- :i.tangent.xyz [:* :baseN [:dot :baseN :i.tangent.xyz]]]]]
    [:let :B [:* [:normalize [:cross :baseN :T]] :i.tangent.w]]
-   [:let :mapN [:- [:* [:textureSample :normalTex :materialSamp :i.uv] :2.0] [:vec4 1.0]]]
+   [:let :mapN [:- [:* [:textureSample :normalTex :materialSamp :i.uv :materialLayer] :2.0] [:vec4 1.0]]]
    [:let :mappedN [:normalize [:+ [:* :T :mapN.x] [:* :B :mapN.y] [:* :baseN :mapN.z]]]]
    [:let :N [:normalize [:mix :baseN :mappedN :useTex]]]
-   [:let :albedoSample [:textureSample :albedoTex :materialSamp :i.uv]]
+   [:let :albedoSample [:textureSample :albedoTex :materialSamp :i.uv :materialLayer]]
    [:let :baseColor [:* :i.col [:mix [:vec3 1.0] :albedoSample.rgb :useTex]]]
-   [:let :mr [:textureSample :metallicRoughnessTex :materialSamp :i.uv]]
+   [:let :mr [:textureSample :metallicRoughnessTex :materialSamp :i.uv :materialLayer]]
    [:let :metallic [:clamp [:* :i.mat.x [:mix 1.0 :mr.b :useTex]] 0.0 1.0]]
    [:let :rough [:clamp [:* :i.mat.y [:mix 1.0 :mr.g :useTex]] 0.04 1.0]]
    [:let :emissive :i.mat.z]
@@ -307,9 +310,9 @@
    (w/binding* {:group 0 :binding 0 :space :uniform} :g :G)
    (w/binding* {:group 0 :binding 1} :shadowMap "texture_depth_2d_array")
    (w/binding* {:group 0 :binding 2} :shadowSamp "sampler_comparison")
-   (w/binding* {:group 0 :binding 3} :albedoTex "texture_2d<f32>")
-   (w/binding* {:group 0 :binding 4} :normalTex "texture_2d<f32>")
-   (w/binding* {:group 0 :binding 5} :metallicRoughnessTex "texture_2d<f32>")
+   (w/binding* {:group 0 :binding 3} :albedoTex "texture_2d_array<f32>")
+   (w/binding* {:group 0 :binding 4} :normalTex "texture_2d_array<f32>")
+   (w/binding* {:group 0 :binding 5} :metallicRoughnessTex "texture_2d_array<f32>")
    (w/binding* {:group 0 :binding 6} :materialSamp "sampler")
    (apply w/func :cascaded-shadow
           {:params [[:wpos [:vec3 :f32]] [:ndl :f32]] :ret :f32}
@@ -333,7 +336,8 @@
 (defn cascaded-textured-hdr-shader
   "Linear-HDR PBR shader with sRGB base color, tangent-space normal, and
    glTF metallic-roughness bindings. material.w enables texture sampling per
-   instance, so untextured and textured objects share one instanced pipeline."
+   instance. Positive material.w values select a one-based texture-array layer,
+   so many materials and untextured objects share one instanced pipeline."
   []
   (cascaded-textured-shader* textured-pbr-fs-body))
 
