@@ -422,6 +422,61 @@
   return out;
 }")
 
+(defn atmosphere-cloud-shader
+  "Deterministic HDR atmosphere with an analytic two-octave cloud layer."
+  []
+  (w/shader
+   fullscreen-vertex-wgsl
+   "struct Atmosphere {
+  zenith_enabled: vec4<f32>, horizon_rayleigh: vec4<f32>,
+  sun_mie: vec4<f32>, sun_dir_disc: vec4<f32>,
+  cloud_shape: vec4<f32>, cloud_color_softness: vec4<f32>,
+  cloud_seed_pad: vec4<f32>, viewport_pad: vec4<f32>,
+};
+@group(0) @binding(0) var<uniform> atmosphere: Atmosphere;
+fn hash21(p: vec2<f32>) -> f32 {
+  let q = dot(p, vec2<f32>(127.1, 311.7)) + atmosphere.cloud_seed_pad.x;
+  return fract(sin(q) * 43758.5453123);
+}
+fn valueNoise(p: vec2<f32>) -> f32 {
+  let i = floor(p); let f = fract(p); let u = f*f*(3.0-2.0*f);
+  return mix(mix(hash21(i), hash21(i+vec2<f32>(1.0,0.0)), u.x),
+             mix(hash21(i+vec2<f32>(0.0,1.0)), hash21(i+vec2<f32>(1.0,1.0)), u.x), u.y);
+}
+fn fbm(p0: vec2<f32>) -> f32 {
+  var p = p0; var sum = 0.0; var amplitude = 0.5;
+  for (var octave = 0; octave < 4; octave++) {
+    sum += valueNoise(p) * amplitude;
+    p = p*2.07 + vec2<f32>(5.3,1.7);
+    amplitude *= 0.5;
+  }
+  return sum / 0.9375;
+}
+@fragment fn fs(in: FullscreenOut) -> @location(0) vec4<f32> {
+  let v = clamp(1.0-in.uv.y, 0.0, 1.0);
+  let airMass = pow(v, 0.42 + atmosphere.horizon_rayleigh.w*0.08);
+  var sky = mix(atmosphere.horizon_rayleigh.rgb, atmosphere.zenith_enabled.rgb, airMass);
+  let sunUv = vec2<f32>(0.5 + atmosphere.sun_dir_disc.x*0.38,
+                        0.52 + atmosphere.sun_dir_disc.y*0.34);
+  let sunDistance = distance(in.uv, sunUv);
+  let disc = 1.0-smoothstep(atmosphere.sun_dir_disc.w, atmosphere.sun_dir_disc.w*2.8, sunDistance);
+  let mieHalo = exp(-sunDistance * (8.0 + 24.0*(1.0-atmosphere.sun_mie.w)));
+  sky += atmosphere.sun_mie.rgb * (disc*5.0 + mieHalo*atmosphere.sun_mie.w);
+  let scale = atmosphere.cloud_shape.z;
+  let domain = vec2<f32>(in.uv.x*scale*1.78, (in.uv.y-atmosphere.cloud_shape.w)*scale*1.16);
+  let body = fbm(domain);
+  let erosion = fbm(domain*2.73+11.4);
+  let cloudNoise = body*0.82 + erosion*0.18;
+  let cloud = smoothstep(atmosphere.cloud_shape.x,
+                         atmosphere.cloud_shape.x+atmosphere.cloud_color_softness.w,
+                         cloudNoise) * atmosphere.cloud_shape.y;
+  let horizonMask = smoothstep(0.04,0.24,in.uv.y) * (1.0-smoothstep(0.48,0.96,in.uv.y));
+  let silver = pow(max(0.0,1.0-sunDistance*1.8),4.0);
+  let cloudColor = atmosphere.cloud_color_softness.rgb * (0.72+silver*0.48);
+  sky = mix(sky, cloudColor, clamp(cloud*horizonMask,0.0,0.92));
+  return vec4<f32>(mix(atmosphere.horizon_rayleigh.rgb,sky,atmosphere.zenith_enabled.w),1.0);
+}"))
+
 (defn bloom-shader
   "Half-resolution bright-pass with a single 3x3 Gaussian filter."
   []
