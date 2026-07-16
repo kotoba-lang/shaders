@@ -127,9 +127,14 @@
   [[:vp :mat4] [:sun-dir :vec4] [:sun-col :vec4] [:sky :vec4]
    [:light-vp0 :mat4] [:light-vp1 :mat4] [:light-vp2 :mat4] [:light-vp3 :mat4]
    [:shadow-splits :vec4]
-   [:light-a :vec4] [:light-b :vec4] [:light-c :vec4] [:light-d :vec4]
-   ;; wind = normalized world X/Z direction, deterministic scene time, speed.
-   [:wind :vec4]])
+   [:light-a :vec4] [:light-b :vec4] [:light-c :vec4] [:light-d :vec4]])
+
+(def foliage-G-fields
+  "Textured foliage extension. Keeping this separate preserves the established
+   448-byte cascaded uniform ABI for native and untextured adapters."
+  (conj cascaded-G-fields
+        ;; wind = normalized world X/Z direction, deterministic scene time, speed.
+        [:wind :vec4]))
 
 (def cascaded-shadow-fn-body
   [[:let :eye [:vec3 :g.sun-dir.w :g.sun-col.w :g.sky.w]]
@@ -370,7 +375,7 @@
 
 (defn- cascaded-textured-shader* [fs-body]
   (w/shader
-   (w/struct* :G cascaded-G-fields)
+   (w/struct* :G foliage-G-fields)
    (w/binding* {:group 0 :binding 0 :space :uniform} :g :G)
    (w/binding* {:group 0 :binding 1} :shadowMap "texture_depth_2d_array")
    (w/binding* {:group 0 :binding 2} :shadowSamp "sampler_comparison")
@@ -411,7 +416,7 @@
   {:pre [(<= 0 cascade-index 3)]}
   (let [matrix-field (keyword (str "g.light-vp" cascade-index))]
     (w/shader
-     (w/struct* :G cascaded-G-fields)
+     (w/struct* :G foliage-G-fields)
      (w/binding* {:group 0 :binding 0 :space :uniform} :g :G)
      (w/binding* {:group 0 :binding 1} :albedoTex "texture_2d_array<f32>")
      (w/binding* {:group 0 :binding 2} :materialSamp "sampler")
