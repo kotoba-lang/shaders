@@ -120,6 +120,14 @@ fn vs(@location(0) pos: vec3<f32>, @location(1) normal: vec3<f32>,
     (is (str/includes? composite "2.51"))
     (is (str/includes? composite "bloomTex"))))
 
+(deftest atmosphere-cloud-fullscreen-contract
+  (let [wgsl (sh/atmosphere-cloud-shader)]
+    (is (str/includes? wgsl "struct Atmosphere"))
+    (is (str/includes? wgsl "@binding(0) var<uniform> atmosphere"))
+    (is (str/includes? wgsl "valueNoise"))
+    (is (str/includes? wgsl "cloud_seed_pad"))
+    (is (= wgsl (sh/atmosphere-cloud-shader)))))
+
 (deftest textured-pbr-contract
   (let [wgsl (sh/cascaded-textured-hdr-shader)
         direct (sh/cascaded-textured-lit-shader)]
