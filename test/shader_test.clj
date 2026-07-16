@@ -126,6 +126,8 @@ fn vs(@location(0) pos: vec3<f32>, @location(1) normal: vec3<f32>,
         adaptive (sh/hdr-ao-composite-shader)]
     (is (str/includes? ao "texture_depth_2d"))
     (is (str/includes? ao "linearDepth"))
+    (is (str/includes? ao "depthGradient"))
+    (is (str/includes? ao "expectedDepth"))
     (is (str/includes? ao "i < 12"))
     (is (str/includes? ao "2.39996323"))
     (is (str/includes? adaptive "aoTex"))
