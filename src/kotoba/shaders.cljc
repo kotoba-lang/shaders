@@ -13,6 +13,7 @@
 (def lit-shader k/lit-shader)
 (def cascaded-G-fields k/cascaded-G-fields)
 (def cascaded-shadow-shader k/cascaded-shadow-shader)
+(def cascaded-foliage-shadow-shader k/cascaded-foliage-shadow-shader)
 (def cascaded-lit-shader k/cascaded-lit-shader)
 (def cascaded-hdr-shader k/cascaded-hdr-shader)
 (def cascaded-textured-hdr-shader k/cascaded-textured-hdr-shader)
