@@ -160,3 +160,16 @@ fn vs(@location(0) pos: vec3<f32>, @location(1) normal: vec3<f32>,
     (is (not (str/includes? wgsl "shininess")))
     (is (not (str/includes? wgsl "2.51")))
     (is (str/includes? direct "2.51"))))
+
+(deftest foliage-cutout-and-wind-match-color-and-shadow-passes
+  (let [color (sh/cascaded-textured-hdr-shader)]
+    (is (str/includes? color "@location(13) foliage: vec4<f32>"))
+    (is (str/includes? color "let windWave = sin("))
+    (is (str/includes? color "discard;"))
+    (is (str/includes? color "albedoSample.a < i.foliage.x")))
+  (doseq [cascade (range 4)
+          :let [shadow (sh/cascaded-foliage-shadow-shader cascade)]]
+    (is (str/includes? shadow (str "g.light_vp" cascade)))
+    (is (str/includes? shadow "@binding(1) var albedoTex"))
+    (is (str/includes? shadow "let windWave = sin("))
+    (is (str/includes? shadow "discard;"))))
