@@ -19,5 +19,7 @@
 (def cascaded-textured-hdr-shader k/cascaded-textured-hdr-shader)
 (def cascaded-textured-lit-shader k/cascaded-textured-lit-shader)
 (def bloom-shader k/bloom-shader)
+(def ssao-shader k/ssao-shader)
 (def atmosphere-cloud-shader k/atmosphere-cloud-shader)
 (def hdr-composite-shader k/hdr-composite-shader)
+(def hdr-ao-composite-shader k/hdr-ao-composite-shader)

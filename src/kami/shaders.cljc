@@ -568,18 +568,79 @@ fn fbm(p0: vec2<f32>) -> f32 {
   return vec4<f32>(sum / 16.0, 1.0);
 }") )
 
+(defn ssao-shader
+  "Deterministic depth-derived screen-space contact occlusion.  The compact
+   eight-float contract is radius/intensity/bias/power + near/far/fade range;
+   no frame-varying noise texture is required, so visual regression captures
+   are stable."
+  []
+  (w/shader
+   fullscreen-vertex-wgsl
+   "struct SsaoParams {
+  shape: vec4<f32>, // radiusPx, intensity, bias, power
+  range: vec4<f32>, // near, far, fadeStart, fadeEnd
+};
+@group(0) @binding(0) var depthTex: texture_depth_2d;
+@group(0) @binding(1) var<uniform> params: SsaoParams;
+fn linearDepth(d: f32) -> f32 {
+  return (params.range.x * params.range.y) /
+         max(params.range.y - d * (params.range.y - params.range.x), 0.0001);
+}
+@fragment fn fs(in: FullscreenOut) -> @location(0) vec4<f32> {
+  let dims = vec2<i32>(textureDimensions(depthTex));
+  let pixel = clamp(vec2<i32>(in.uv * vec2<f32>(dims)), vec2<i32>(0), dims-vec2<i32>(1));
+  let rawCenter = textureLoad(depthTex, pixel, 0);
+  if (rawCenter >= 0.999999) { return vec4<f32>(1.0); }
+  let center = linearDepth(rawCenter);
+  let golden = 2.39996323;
+  var occlusion = 0.0;
+  var weightSum = 0.0;
+  for (var i = 0; i < 12; i++) {
+    let fi = f32(i);
+    let ring = (0.35 + 0.65 * (fi + 0.5) / 12.0) * params.shape.x;
+    let dir = vec2<f32>(cos(fi*golden), sin(fi*golden));
+    let q = clamp(pixel + vec2<i32>(round(dir*ring)), vec2<i32>(0), dims-vec2<i32>(1));
+    let sampleDepth = linearDepth(textureLoad(depthTex, q, 0));
+    let delta = center - sampleDepth;
+    let rangeWeight = 1.0 - smoothstep(params.shape.x*0.05, params.shape.x*0.75, abs(delta));
+    occlusion += select(0.0, rangeWeight, delta > params.shape.z);
+    weightSum += rangeWeight;
+  }
+  let distanceFade = 1.0-smoothstep(params.range.z, params.range.w, center);
+  let ao = pow(clamp(1.0-(occlusion/max(weightSum,1.0))*params.shape.y*distanceFade,0.0,1.0), params.shape.w);
+  return vec4<f32>(ao,ao,ao,1.0);
+}"))
+
 (defn hdr-composite-shader
-  "Combine linear scene+bloom, apply ACES filmic mapping, then output gamma."
+  "Combine linear scene+bloom+AO, apply ACES filmic mapping, then output gamma."
   []
   (w/shader
    fullscreen-vertex-wgsl
    "@group(0) @binding(0) var hdrTex: texture_2d<f32>;
 @group(0) @binding(1) var bloomTex: texture_2d<f32>;
-@group(0) @binding(2) var linearSampler: sampler;
+@group(0) @binding(2) var aoTex: texture_2d<f32>;
+@group(0) @binding(3) var linearSampler: sampler;
 @fragment fn fs(in: FullscreenOut) -> @location(0) vec4<f32> {
   var c = textureSample(hdrTex, linearSampler, in.uv).rgb;
   c += textureSample(bloomTex, linearSampler, in.uv).rgb * 0.12;
+  c *= mix(1.0, textureSample(aoTex, linearSampler, in.uv).r, 0.72);
   c = clamp((c*(2.51*c+vec3<f32>(0.03))) / (c*(2.43*c+vec3<f32>(0.59))+vec3<f32>(0.14)), vec3<f32>(0.0), vec3<f32>(1.0));
   c = pow(c, vec3<f32>(1.0/2.2));
   return vec4<f32>(c,1.0);
 }") )
+
+(defn hdr-ao-composite-shader
+  "Adaptive-tier ACES composite retaining contact AO while shedding bloom."
+  []
+  (w/shader
+   fullscreen-vertex-wgsl
+   "@group(0) @binding(0) var hdrTex: texture_2d<f32>;
+@group(0) @binding(1) var aoTex: texture_2d<f32>;
+@group(0) @binding(2) var linearSampler: sampler;
+@fragment fn fs(in: FullscreenOut) -> @location(0) vec4<f32> {
+  var c = textureSample(hdrTex, linearSampler, in.uv).rgb;
+  c *= mix(1.0, textureSample(aoTex, linearSampler, in.uv).r, 0.72);
+  c = clamp((c*(2.51*c+vec3<f32>(0.03))) / (c*(2.43*c+vec3<f32>(0.59))+vec3<f32>(0.14)), vec3<f32>(0.0), vec3<f32>(1.0));
+  c = pow(c, vec3<f32>(1.0/2.2));
+  return vec4<f32>(c,1.0);
+}"))

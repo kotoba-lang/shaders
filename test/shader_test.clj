@@ -118,7 +118,18 @@ fn vs(@location(0) pos: vec3<f32>, @location(1) normal: vec3<f32>,
     (is (str/includes? bloom "smoothstep(0.8, 1.3"))
     (is (str/includes? bloom "sum / 16.0"))
     (is (str/includes? composite "2.51"))
-    (is (str/includes? composite "bloomTex"))))
+    (is (str/includes? composite "bloomTex"))
+    (is (str/includes? composite "aoTex"))))
+
+(deftest ssao-contact-contract
+  (let [ao (sh/ssao-shader)
+        adaptive (sh/hdr-ao-composite-shader)]
+    (is (str/includes? ao "texture_depth_2d"))
+    (is (str/includes? ao "linearDepth"))
+    (is (str/includes? ao "i < 12"))
+    (is (str/includes? ao "2.39996323"))
+    (is (str/includes? adaptive "aoTex"))
+    (is (= ao (sh/ssao-shader)))))
 
 (deftest atmosphere-cloud-fullscreen-contract
   (let [wgsl (sh/atmosphere-cloud-shader)]
