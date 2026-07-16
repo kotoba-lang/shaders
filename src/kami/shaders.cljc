@@ -127,7 +127,9 @@
   [[:vp :mat4] [:sun-dir :vec4] [:sun-col :vec4] [:sky :vec4]
    [:light-vp0 :mat4] [:light-vp1 :mat4] [:light-vp2 :mat4] [:light-vp3 :mat4]
    [:shadow-splits :vec4]
-   [:light-a :vec4] [:light-b :vec4] [:light-c :vec4] [:light-d :vec4]])
+   [:light-a :vec4] [:light-b :vec4] [:light-c :vec4] [:light-d :vec4]
+   ;; wind = normalized world X/Z direction, deterministic scene time, speed.
+   [:wind :vec4]])
 
 (def cascaded-shadow-fn-body
   [[:let :eye [:vec3 :g.sun-dir.w :g.sun-col.w :g.sky.w]]
@@ -243,11 +245,19 @@
         [:uv [:vec2 :f32] {:location 4}]
         [:tangent [:vec4 :f32] {:location 5}]
         [:biome [:vec3 :f32] {:location 6}]
-        [:biomeLayers [:vec3 :f32] {:location 7}]))
+        [:biomeLayers [:vec3 :f32] {:location 7}]
+        [:foliage [:vec4 :f32] {:location 8}]))
 
 (def textured-vs-body
   [[:let :model [:mat4 :m0 :m1 :m2 :m3]]
-   [:let :world [:* :model [:vec4 :pos 1.0]]]
+   [:var :world [:* :model [:vec4 :pos 1.0]]]
+   ;; UV.v is the portable base→tip coordinate for vegetation cards. Opaque
+   ;; instances carry strength=0 and follow the exact pre-wind path.
+   [:let :windWeight [:clamp [:- 1.0 :uv.y] 0.0 1.0]]
+   [:let :windWave [:sin [:+ [:* :g.wind.z :g.wind.w :foliage.w] :foliage.z]]]
+   [:let :windAmount [:* :foliage.y :windWeight :windWeight :windWave]]
+   [:set :world.x [:+ :world.x [:* :g.wind.x :windAmount]]]
+   [:set :world.z [:+ :world.z [:* :g.wind.y :windAmount]]]
    ;; The instance model contains rotation * non-uniform scale. Transforming a
    ;; normal with model directly bends lighting on tall/thin geometry; dividing
    ;; each basis column by its squared length is inverse-transpose(model3x3)
@@ -267,6 +277,7 @@
    [:set :o.tangent [:vec4 [:normalize [:. [:* :model [:vec4 :tangent.xyz 0.0]] :xyz]] :tangent.w]]
    [:set :o.biome :biomeWeights]
    [:set :o.biomeLayers :biomeLayerIndices]
+   [:set :o.foliage :foliage]
    [:return :o]])
 
 (def textured-pbr-fs-body
@@ -302,6 +313,8 @@
    [:let :mappedN [:normalize [:+ [:* :T :mapN.x] [:* :B :mapN.y] [:* :baseN :mapN.z]]]]
    [:let :N [:normalize [:mix :baseN :mappedN :useTex]]]
    [:let :albedoSample [:textureSample :albedoTex :materialSamp :i.uv :materialLayer]]
+   [:if [:&& [:>= :i.foliage.x 0.0] [:< :albedoSample.a :i.foliage.x]]
+    [[:discard]]]
    [:let :resolvedAlbedo [:mix :albedoSample.rgb :biomeAlbedo :biomeUse]]
    [:let :baseColor [:* :i.col [:mix [:vec3 1.0] :resolvedAlbedo [:max :useTex :biomeUse]]]]
    [:let :mr [:textureSample :metallicRoughnessTex :materialSamp :i.uv :materialLayer]]
@@ -385,10 +398,61 @@
                                [:tangent [:vec4 :f32] {:location 9}]
                                [:uvTransform [:vec4 :f32] {:location 10}]
                                [:biomeWeights [:vec3 :f32] {:location 11}]
-                               [:biomeLayerIndices [:vec3 :f32] {:location 12}]]
+                               [:biomeLayerIndices [:vec3 :f32] {:location 12}]
+                               [:foliage [:vec4 :f32] {:location 13}]]
                       :ret :VO} textured-vs-body)
-   (apply w/func :fs {:stage :fragment :params [[:i :VO]]
+     (apply w/func :fs {:stage :fragment :params [[:i :VO]]
                       :ret [:loc 0 [:vec4 :f32]]} fs-body)))
+
+(defn cascaded-foliage-shadow-shader
+  "Depth-only cascade shader with the same wind deformation and alpha-mask
+   decision as the color pass, preventing detached or rectangular card shadows."
+  [cascade-index]
+  {:pre [(<= 0 cascade-index 3)]}
+  (let [matrix-field (keyword (str "g.light-vp" cascade-index))]
+    (w/shader
+     (w/struct* :G cascaded-G-fields)
+     (w/binding* {:group 0 :binding 0 :space :uniform} :g :G)
+     (w/binding* {:group 0 :binding 1} :albedoTex "texture_2d_array<f32>")
+     (w/binding* {:group 0 :binding 2} :materialSamp "sampler")
+     (w/struct* :ShadowOut
+                [[:clip [:vec4 :f32] {:builtin :position}]
+                 [:uv [:vec2 :f32] {:location 0}]
+                 [:cutoffLayer [:vec2 :f32] {:location 1}]])
+     (apply w/func :vs {:stage :vertex
+                        :params [[:pos [:vec3 :f32] {:location 0}]
+                                 [:normal [:vec3 :f32] {:location 1}]
+                                 [:m0 [:vec4 :f32] {:location 2}]
+                                 [:m1 [:vec4 :f32] {:location 3}]
+                                 [:m2 [:vec4 :f32] {:location 4}]
+                                 [:m3 [:vec4 :f32] {:location 5}]
+                                 [:color [:vec4 :f32] {:location 6}]
+                                 [:material [:vec4 :f32] {:location 7}]
+                                 [:uv [:vec2 :f32] {:location 8}]
+                                 [:tangent [:vec4 :f32] {:location 9}]
+                                 [:uvTransform [:vec4 :f32] {:location 10}]
+                                 [:biomeWeights [:vec3 :f32] {:location 11}]
+                                 [:biomeLayerIndices [:vec3 :f32] {:location 12}]
+                                 [:foliage [:vec4 :f32] {:location 13}]]
+                        :ret :ShadowOut}
+            [[:let :model [:mat4 :m0 :m1 :m2 :m3]]
+             [:var :world [:* :model [:vec4 :pos 1.0]]]
+             [:let :windWeight [:clamp [:- 1.0 :uv.y] 0.0 1.0]]
+             [:let :windWave [:sin [:+ [:* :g.wind.z :g.wind.w :foliage.w] :foliage.z]]]
+             [:let :windAmount [:* :foliage.y :windWeight :windWeight :windWave]]
+             [:set :world.x [:+ :world.x [:* :g.wind.x :windAmount]]]
+             [:set :world.z [:+ :world.z [:* :g.wind.y :windAmount]]]
+             [:decl :o :ShadowOut]
+             [:set :o.clip [:* matrix-field :world]
+             ]
+             [:set :o.uv [:+ [:* :uv :uvTransform.xy] :uvTransform.zw]]
+             [:set :o.cutoffLayer [:vec2 :foliage.x [:max [:- :material.w 1.0] 0.0]]]
+             [:return :o]])
+     (apply w/func :fs {:stage :fragment :params [[:i :ShadowOut]]}
+            [[:let :alpha [:. [:textureSample :albedoTex :materialSamp :i.uv
+                                [:i32 :i.cutoffLayer.y]] :a]]
+             [:if [:&& [:>= :i.cutoffLayer.x 0.0] [:< :alpha :i.cutoffLayer.x]]
+              [[:discard]]]]))))
 
 (defn cascaded-textured-hdr-shader
   "Linear-HDR PBR shader with sRGB base color, tangent-space normal, and
