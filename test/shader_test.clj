@@ -173,3 +173,9 @@ fn vs(@location(0) pos: vec3<f32>, @location(1) normal: vec3<f32>,
     (is (str/includes? shadow "@binding(1) var albedoTex"))
     (is (str/includes? shadow "let windWave = sin("))
     (is (str/includes? shadow "discard;"))))
+
+(deftest foliage-wind-does-not-grow-the-established-cascade-uniform-abi
+  (is (not (str/includes? (sh/cascaded-lit-shader) "wind: vec4<f32>")))
+  (is (not (str/includes? (sh/cascaded-shadow-shader 0) "wind: vec4<f32>")))
+  (is (str/includes? (sh/cascaded-textured-hdr-shader) "wind: vec4<f32>"))
+  (is (str/includes? (sh/cascaded-foliage-shadow-shader 0) "wind: vec4<f32>")))
