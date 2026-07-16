@@ -604,7 +604,7 @@ fn linearDepth(d: f32) -> f32 {
   for (var i = 0; i < 12; i++) {
     if (i >= i32(clamp(params.control.x, 1.0, 12.0))) { break; }
     let fi = f32(i);
-    let ring = (0.35 + 0.65 * (fi + 0.5) / 12.0) * params.shape.x;
+    let ring = (0.35 + 0.65 * (fi + 0.5) / clamp(params.control.x, 1.0, 12.0)) * params.shape.x;
     let dir = vec2<f32>(cos(fi*golden), sin(fi*golden));
     let offset = vec2<i32>(round(dir*ring));
     let q = clamp(pixel + offset, vec2<i32>(0), dims-vec2<i32>(1));

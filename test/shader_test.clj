@@ -131,6 +131,7 @@ fn vs(@location(0) pos: vec3<f32>, @location(1) normal: vec3<f32>,
     (is (str/includes? ao "i < 12"))
     (is (str/includes? ao "control: vec4<f32>"))
     (is (str/includes? ao "clamp(params.control.x, 1.0, 12.0)"))
+    (is (str/includes? ao "(fi + 0.5) / clamp(params.control.x"))
     (is (str/includes? ao "2.39996323"))
     (is (str/includes? adaptive "aoTex"))
     (is (= ao (sh/ssao-shader)))))
