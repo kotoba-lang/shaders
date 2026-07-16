@@ -579,6 +579,7 @@ fn fbm(p0: vec2<f32>) -> f32 {
    "struct SsaoParams {
   shape: vec4<f32>, // radiusPx, intensity, bias, power
   range: vec4<f32>, // near, far, fadeStart, fadeEnd
+  control: vec4<f32>, // sampleCount (1..12), remaining lanes reserved
 };
 @group(0) @binding(0) var depthTex: texture_depth_2d;
 @group(0) @binding(1) var<uniform> params: SsaoParams;
@@ -601,6 +602,7 @@ fn linearDepth(d: f32) -> f32 {
   var occlusion = 0.0;
   var weightSum = 0.0;
   for (var i = 0; i < 12; i++) {
+    if (i >= i32(clamp(params.control.x, 1.0, 12.0))) { break; }
     let fi = f32(i);
     let ring = (0.35 + 0.65 * (fi + 0.5) / 12.0) * params.shape.x;
     let dir = vec2<f32>(cos(fi*golden), sin(fi*golden));
