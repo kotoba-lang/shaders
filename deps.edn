@@ -1,7 +1,8 @@
 {:paths ["src"]
  :deps {org.clojure/clojure {:mvn/version "1.11.1"}
         org.clojure/clojurescript {:mvn/version "1.11.132"}
-        io.github.kotoba-lang/wgsl {:local/root "../wgsl"}}
+        io.github.kotoba-lang/wgsl {:git/url "https://github.com/kotoba-lang/wgsl.git"
+         :git/sha "5ab259fed373f3a2bf40305e13005a2b89540ed3"}}
  :aliases
  {:test {:extra-paths ["test"]
          :extra-deps {io.github.cognitect-labs/test-runner
